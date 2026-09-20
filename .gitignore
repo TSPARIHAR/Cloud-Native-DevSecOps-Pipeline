@@ -1,0 +1,31 @@
+# Python & Virtual Envs
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+kubeconfig
+
+# Jenkins & Docker Build Artifacts
+*.log
+.jenkins/
+jenkins_home/
+.docker/
+
+# IDE & OS Specific
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Helm Temporary Charts/Packages
+*.tgz

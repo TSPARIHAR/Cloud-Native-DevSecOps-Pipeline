@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_USER = 'tsparihar'
+        IMAGE_NAME      = 'flask-redis-app'
+        IMAGE_TAG       = "${BUILD_NUMBER}"
+        FULL_IMAGE      = "${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+    }
+
+    stages {
+        stage('Check Workspace') {
+            steps {
+                sh '''
+                    echo "Current directory contents:"
+                    ls -la
+                '''
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('Sonarqube') {
+                    sh '''
+                        echo "Running code analysis..."
+                    '''
+                }
+            }
+        }
+
+        stage('Build & Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'Docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        # Points explicitly to app/Dockerfile and builds using app/ as context
+                        docker build -t $FULL_IMAGE -f app/Dockerfile app/
+                        docker push $FULL_IMAGE
+                    '''
+                }
+            }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                sh '''
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                      aquasec/trivy:latest image --severity HIGH,CRITICAL $FULL_IMAGE || true
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes via Helm') {
+            steps {
+                withCredentials([file(credentialsId: 'K8s-Jenkins', variable: 'KUBECONFIG')]) {
+                    sh '''
+                        # Points directly to helm-chart directory
+                        helm upgrade --install flask-app ./helm-chart \
+                          --set image.repository=$DOCKER_HUB_USER/$IMAGE_NAME \
+                          --set image.tag=$IMAGE_TAG \
+                          --kubeconfig $KUBECONFIG \
+                          --namespace default
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}
